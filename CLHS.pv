@@ -1,0 +1,183 @@
+type element. (*element in finite field or group*)
+free Sec:channel [private].		(*secure channel*)
+free Pub:channel.			(*public channel*)
+
+
+(*-------Names & Variables-------*)
+(*elements of cyclic group*)
+const P:element.
+
+(*1 . master public key*)
+free Ppub:element.
+
+(*2. master secret key*)
+free s:element [private].
+
+(*3. vehicles' private key*)
+free xA:element [private].
+free yA:element [private].
+free xB:element [private].
+free yB:element [private].
+free kA:element [private].
+free kB:element [private].
+free kA':element [private].
+free kB':element [private].
+
+(*4. vehicles' public key*)
+free XA:element.
+free YA:element.
+free XB:element.
+free YB:element.
+
+(*5. User A & identity*)
+free IDA:bitstring.
+
+(*6. User B & identity*)
+free IDB:bitstring.
+
+
+
+(*-------Constructors, Destructors & Equations------*)
+
+
+fun H1(bitstring,element,element,element):element.
+fun H2(element):element.
+fun H3(bitstring,element,element,bitstring,element,element,element,bitstring):element.
+fun H4(bitstring,element,element,bitstring,element,element,element,bitstring):element.
+fun Enc(element,bitstring):bitstring.
+fun Dec(element,bitstring):bitstring.
+
+
+fun Mult(element,element):element.  (*Multiplication in group: G×G*)
+fun Add(element,element):element.	 (*Addition*)
+fun Powzn(element,element):element. 	(*g^s:Powzn(g,s)*)
+
+(*reduc forall kB:element ,kA:element ,m:bitstring; Dec(kB,Enc(kA,m))=m.*)
+
+(*Event*)
+event beginUser(bitstring).
+event endUser(bitstring).
+event beginPowerSation(bitstring).
+event endPowerSation(bitstring).
+
+(*Queries*)
+query attacker(kA).
+query attacker(kB).
+query attacker(kA').
+query attacker(kB').
+query id:bitstring; inj-event (endUser(id)) ==> inj-event(beginPowerSation(id)).
+query id:bitstring; inj-event (endPowerSation(id)) ==> inj-event(beginUser(id)).
+
+(*Processes*)
+(*KGC Processes*)
+let UserAReg=
+	in(Sec,(IDA:bitstring));
+	
+	new rA:element;
+	let XA = Powzn(P,xA) in
+	let YA = Powzn(P,rA) in
+	let yA= Add(rA,Mult(s,H1(IDA,XA,YA,Ppub))) in		
+	out(Sec,(xA,yA));
+	0.
+
+let UserBReg=
+	in(Sec,(IDB:bitstring));
+	
+	new rB:element;
+	let XB = Powzn(P,xB) in
+	let YB = Powzn(P,rB) in
+	let yB= Add(rB,Mult(s,H1(IDB,XB,YB,Ppub))) in		
+	out(Sec,(xB,yB));
+	0.
+
+let KGC=UserAReg | UserBReg.
+
+
+(*UserA Processes*)
+let UserA=
+	(*Registration*)
+	out(Sec,(IDA));
+	in(Sec,(xA:element,yA:element));
+	(*Login & Authentication*)
+	event beginUser(IDA);
+	new M:bitstring;
+	new tA:element;
+	
+	let TA= Powzn(P,tA) in 
+	let hB= H1(IDB,XB,YB,Ppub) in
+	let QA=Powzn(Add(XB,Add(YB,Powzn(Ppub,hB))),Add(xA,Add(yA,tA))) in
+	let kA=H2(QA) in
+	let CA=Enc(kA,M) in
+	let h3A= H3(IDA,XA,YA,IDB,XB,YB,TA,CA) in
+	let h4A= H4(IDA,XA,YA,IDB,XB,YB,TA,CA) in
+	let sigema = Add(tA,Add(Mult(h3A,yA),Mult(h4A,xA))) in
+
+	out(Pub,(CA,TA,sigema));
+	
+	
+	
+	
+	in(Pub,(CB:bitstring,TB:element,sigema':element));	
+	
+	
+	let h3A'= H3(IDA,XA,YA,IDB,XB,YB,TB,CB) in
+	let h4A'= H4(IDA,XA,YA,IDB,XB,YB,TB,CB) in
+
+
+	if(Powzn(P,sigema) = Add(Add(Add(TB,Powzn(YB,h3A')),Powzn(Ppub,Mult(hB,h3A'))),Powzn(XB,h4A'))) then
+
+	let QB'= Powzn(Add(Add(Add(XB,YB),Powzn(Ppub,hB)),TB),Add(xA,yA)) in
+	let kA' = H2(QB') in
+	let M''=Dec(kA',CB) in
+	
+	
+	
+	event endUser(IDA)
+	else 0.
+
+
+(*Power Station Processes*)
+let UserB=
+	(*Registration*)
+	out(Sec,(IDB));
+	in(Sec,(xB:element,yB:element));
+	(*login & Authentication*)
+
+	event beginPowerSation(IDB);
+	in(Pub,(CA:bitstring,TA:element,sigema:element));	
+
+	let hA'= H1(IDA,XA,YA,Ppub) in
+	let h3B'= H3(IDA,XA,YA,IDB,XB,YB,TA,CA) in
+	let h4B'= H4(IDA,XA,YA,IDB,XB,YB,TA,CA) in
+
+
+	if(Powzn(P,sigema) = Add(Add(Add(TA,Powzn(YA,h3B')),Powzn(Ppub,Mult(hA',h3B'))),Powzn(XA,h4B'))) then
+
+	let QB= Powzn(Add(Add(Add(XA,YA),Powzn(Ppub,hA')),TA),Add(xB,yB)) in
+	let kB = H2(QB) in
+	let M'=Dec(kB,CA) in
+	
+	
+	
+	new M':bitstring;
+	new tB:element;
+	
+	let TB= Powzn(P,tB) in 
+	let QB=Powzn(Add(XA,Add(YA,Powzn(Ppub,hA'))),Add(xB,Add(yB,tB))) in
+	let kB'=H2(QB) in
+	let CB=Enc(kB',M') in
+	let h3B= H3(IDA,XA,YA,IDB,XB,YB,TB,CB) in
+	let h4B= H4(IDA,XA,YA,IDB,XB,YB,TB,CB) in
+	let sigema' = Add(tB,Add(Mult(h3B,yB),Mult(h4B,xB))) in
+	out(Pub,(CB,TB,sigema'));
+	
+	
+	
+	
+
+	event endPowerSation(IDB)
+	else 0.
+
+(*Processes Replication*)
+process 
+(!UserA | !UserB | !KGC)
